@@ -1,0 +1,13 @@
+# Keine Profile, Icons oder Archive hochladen (Lizenzen der Hersteller!)
+*.streamDeckProfile
+*.streamDeckIconPack
+*.sdProfile/
+*.zip
+*.png
+*.jpg
+*.gif
+
+__pycache__/
+*.pyc
+.private/
+.env
