@@ -96,6 +96,29 @@ des Decks als **Standardseite** festlegen.
 | `--dry-run` | nur anzeigen, nichts schreiben |
 | `--force` | vorhandene Seiten mit gleichem Namen überschreiben (z. B. für einen zweiten Versuch) |
 
+## Vorlage: Seite für deutsche Züge (`--preset de`)
+
+Statt ein Profil umzuwandeln, kann das Skript eine fertige Seite für deutsche Züge
+in *Train Sim World* bauen (Stream Deck XL, 32 Tasten). Als Pfad wird der Ordner des
+iConCity-Icon-Packs angegeben (oder direkt dessen Unterordner `Icons`):
+
+```bash
+python3 elgato2streamcontroller.py ~/Dokumente/"Train Sim World 6 - iConCity" --preset de --name TSW6
+```
+
+Ergebnis: die Seite **`TSW6 - DE Bahnen`** mit
+
+| Zeile | Tasten |
+|---|---|
+| 1 | SIFA, PZB Wachsam / Frei / Befehl, LZB an/aus, SIFA an/aus, Notbremse, zurück zu `TSW6 - Seite 1` |
+| 2 | Fahrschalter +/−, Zugbremse +/−, Zusatzbremse +/−, Richtungswender +/− |
+| 3 | Hauptschalter +/−, Stromabnehmer +/−, Leistungsschalter, AFB +/−, Sanden |
+| 4 | Tür links/rechts, Horn 1/2, Spitzenlicht +/−, Scheibenwischer, Führerstandslicht |
+
+Die Tastenkürzel entsprechen denen der iConCity-Profile. Zugbremse + und Stromabnehmer
+sind dort nicht belegt; hier gilt die Standardbelegung von Train Sim World (`'` bzw. `P`).
+`--layout`, `--dry-run` und `--force` funktionieren wie beim Umwandeln.
+
 ## Tastaturlayout (wichtig!)
 
 Elgato-Profile speichern Windows-Tastencodes (z. B. „Taste Z“). Unter Linux sendet
