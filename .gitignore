@@ -2,6 +2,7 @@
 *.streamDeckProfile
 *.streamDeckIconPack
 *.sdProfile/
+*.scpage
 *.zip
 *.png
 *.jpg

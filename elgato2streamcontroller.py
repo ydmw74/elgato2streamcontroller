@@ -14,11 +14,16 @@ Andere Aktionen werden nur mit Bild übernommen (ohne Funktion) und gemeldet.
 Aufruf:
   python3 elgato2streamcontroller.py PROFIL [--name KURZNAME] [--layout de|us] [--dry-run]
   python3 elgato2streamcontroller.py ICON-ORDNER --preset de [--name KURZNAME]   (fertige Seite für deutsche Züge)
+  python3 elgato2streamcontroller.py --check [--repair]   (Bildpfade aller Seiten prüfen / reparieren)
+
+StreamController muss beim Schreiben beendet sein: Er hält Seiten im Speicher und
+speichert sie später zurück – frisch geschriebene Seiten würden sonst überschrieben.
 """
 import argparse
 import base64
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -261,10 +266,14 @@ PRESETS = {
             # Zeile 1: Fahren und Bremsen
             "0,1": ("press", "THROTTLE-INCREASE", (0x41, 0)),
             "1,1": ("press", "THROTTLE-DECREASE", (0x44, 0)),
-            "2,1": ("press", "AUTOMATIC-BRAKE-INCREASE", (0xDE, 0)),   # nicht im Profil: TSW-Standard '
-            "3,1": ("press", "AUTOMATIC-BRAKE-DECREASE", (0xBA, 0)),
-            "4,1": ("press", "INDEPENDENT-BRAKE-INCREASE", (0xDD, 0)),
-            "5,1": ("press", "INDEPENDENT-BRAKE-DECREASE", (0xDB, 0)),
+            # Bremsen bewusst nicht auf den TSW-Standards ' ; [ ]: Auf deutscher Tastatur sind das
+            # Ä/Ü/ß/´, die TSW6 (Unreal Engine) unter Proton nicht zuverlässig erkennt.
+            # In TSW6 deshalb umbelegen: Zugbremse Z / Shift+Z, Zusatzbremse Ctrl+Z / Ctrl+Shift+Z
+            # (T ist in TSW6 schon belegt: Überblick Streckenziele).
+            "2,1": ("press", "AUTOMATIC-BRAKE-INCREASE", (0x5A, 0)),              # Z
+            "3,1": ("press", "AUTOMATIC-BRAKE-DECREASE", (0x5A, SHIFT)),          # Shift+Z
+            "4,1": ("press", "INDEPENDENT-BRAKE-INCREASE", (0x5A, CTRL)),         # Ctrl+Z
+            "5,1": ("press", "INDEPENDENT-BRAKE-DECREASE", (0x5A, CTRL | SHIFT)), # Ctrl+Shift+Z
             "6,1": ("press", "REVERSER-INCREASE", (0x57, 0)),
             "7,1": ("press", "REVERSER-DECREASE", (0x53, 0)),
             # Zeile 2: Aufrüsten, AFB, Sanden
@@ -369,9 +378,52 @@ def find_sdprofile(path: Path, tmp: Path) -> Path:
     sys.exit(f"Kein Elgato-Profil gefunden in: {path}")
 
 
+def streamcontroller_running() -> bool:
+    try:
+        out = subprocess.run(["flatpak", "ps", "--columns=application"], capture_output=True, text=True).stdout
+        if "com.core447.StreamController" in out:
+            return True
+    except FileNotFoundError:
+        pass
+    return subprocess.run(["pgrep", "-f", "StreamController/main.py"], capture_output=True).returncode == 0
+
+
+def check_media(repair: bool) -> int:
+    """Sucht Bildpfade in allen Seiten, deren Datei fehlt. Mit repair werden sie auf die
+    gleichnamige Datei unter imported/ umgebogen, sofern es genau eine gibt."""
+    imported = SC_DATA / "imported"
+    by_name: dict[str, list[Path]] = {}
+    for f in imported.rglob("*"):
+        if f.is_file():
+            by_name.setdefault(f.name, []).append(f)
+    broken = 0
+    for page in sorted((SC_DATA / "pages").glob("*.json")):
+        data = json.loads(page.read_text())
+        changed = False
+        for ident, key in (data.get("keys") or {}).items():
+            for st in (key.get("states") or {}).values():
+                media = st.get("media") or {}
+                path = media.get("path")
+                if not path or Path(path).exists():
+                    continue
+                cands = by_name.get(Path(path).name, [])
+                if repair and len(cands) == 1:
+                    media["path"] = str(cands[0])
+                    changed = True
+                    print(f"  repariert: {page.stem} {ident}: {Path(path).name} -> {cands[0].parent}")
+                    continue
+                broken += 1
+                hint = f"{len(cands)} Kandidaten" if cands else "keine Datei gefunden"
+                print(f"  fehlt: {page.stem} {ident}: {path} ({hint})")
+        if changed:
+            shutil.copy2(page, page.with_suffix(".json.bak"))
+            page.write_text(json.dumps(data, indent=4, ensure_ascii=False))
+    return broken
+
+
 def main():
     ap = argparse.ArgumentParser(description="Elgato-Stream-Deck-Profil nach StreamController konvertieren")
-    ap.add_argument("profile", type=Path,
+    ap.add_argument("profile", type=Path, nargs="?",
                     help=".streamDeckProfile, .zip oder .sdProfile-Ordner; mit --preset: Icon-Ordner des Packs")
     ap.add_argument("--preset", choices=list(PRESETS),
                     help="statt Profil umzuwandeln eine fertige Seite bauen (de: deutsche Züge, PZB/LZB/SIFA)")
@@ -380,7 +432,21 @@ def main():
                     help="Tastaturlayout des Systems (Standard: de)")
     ap.add_argument("--dry-run", action="store_true", help="nur anzeigen, nichts schreiben")
     ap.add_argument("--force", action="store_true", help="vorhandene Seiten gleichen Namens überschreiben")
+    ap.add_argument("--check", action="store_true", help="fehlende Bilder in allen Seiten melden")
+    ap.add_argument("--repair", action="store_true", help="mit --check: fehlende Bildpfade reparieren")
     args = ap.parse_args()
+
+    if args.check:
+        if args.repair and streamcontroller_running():
+            sys.exit("StreamController läuft – bitte erst beenden, sonst überschreibt er die Reparatur.")
+        broken = check_media(args.repair)
+        print("Alle Bildpfade in Ordnung." if not broken else f"{broken} Bildpfad(e) ohne Datei.")
+        sys.exit(1 if broken else 0)
+    if args.profile is None:
+        ap.error("PROFIL bzw. Icon-Ordner fehlt")
+    if not args.dry_run and streamcontroller_running():
+        sys.exit("StreamController läuft – bitte erst beenden. Er speichert seine Seiten aus dem Speicher "
+                 "zurück und würde die neu geschriebenen Seiten überschreiben.")
 
     warnings = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -410,6 +476,9 @@ def main():
             for n, p in pages.items():
                 (pages_dir / f"{n}.json").write_text(json.dumps(p, indent=2, ensure_ascii=False))
             print(f"\n{len(pages)} Seite(n) und {len(conv.assets_out)} Bilder nach {SC_DATA} geschrieben.")
+            missing = [d for d in conv.assets_out.values() if not d.is_file()]
+            for d in missing:
+                warnings.append(f"Bild fehlt nach dem Kopieren: {d}")
 
     for w in dict.fromkeys(warnings):
         print("Hinweis:", w)

@@ -63,6 +63,9 @@ entpackten `.sdProfile`-Ordner.
 StreamController sollte während der Umwandlung **nicht laufen**
 (auch nicht im Hintergrund/Tray). OpenDeck darf ebenfalls nicht laufen –
 es können nicht zwei Programme gleichzeitig das Stream Deck steuern.
+Das Skript prüft das und bricht ab, solange StreamController läuft: StreamController
+speichert seine Seiten beim Beenden aus dem Speicher zurück und würde die frisch
+geschriebenen Seiten sonst mit dem alten Stand überschreiben.
 
 ### 4. Probelauf
 
@@ -95,6 +98,8 @@ des Decks als **Standardseite** festlegen.
 | `--layout de` \| `us` | Tastaturlayout, siehe unten (Standard: `de`) |
 | `--dry-run` | nur anzeigen, nichts schreiben |
 | `--force` | vorhandene Seiten mit gleichem Namen überschreiben (z. B. für einen zweiten Versuch) |
+| `--check` | alle Seiten auf Bildpfade prüfen, deren Datei fehlt (ohne Profil-Angabe) |
+| `--check --repair` | fehlende Bildpfade auf die gleichnamige Datei unter `imported/` umbiegen (Sicherung als `.json.bak`) |
 
 ## Vorlage: Seite für deutsche Züge (`--preset de`)
 
@@ -115,8 +120,22 @@ Ergebnis: die Seite **`TSW6 - DE Bahnen`** mit
 | 3 | Hauptschalter +/−, Stromabnehmer +/−, Leistungsschalter, AFB +/−, Sanden |
 | 4 | Tür links/rechts, Horn 1/2, Spitzenlicht +/−, Scheibenwischer, Führerstandslicht |
 
-Die Tastenkürzel entsprechen denen der iConCity-Profile. Zugbremse + und Stromabnehmer
-sind dort nicht belegt; hier gilt die Standardbelegung von Train Sim World (`'` bzw. `P`).
+Die Tastenkürzel entsprechen denen der iConCity-Profile. Stromabnehmer ist dort nicht
+belegt; hier gilt die Standardbelegung von Train Sim World (`P`).
+
+**Ausnahme Bremsen – in TSW6 einmalig umbelegen!** Die TSW-Standardtasten `'` `;` `[` `]`
+liegen auf deutscher Tastatur auf Ä, Ü, ß und ´. Diese Tasten erkennt TSW6 (Unreal Engine)
+unter Proton nicht zuverlässig – sie lassen sich oft nicht einmal zuweisen. Die Vorlage
+nutzt deshalb freie Tasten; stelle sie in TSW6 unter *Optionen → Steuerung → Tastatur* ein:
+
+| Funktion in TSW6 | erhöhen | verringern |
+|---|---|---|
+| Zugbremse (Automatic Brake) | `Z` | `Shift+Z` |
+| Zusatzbremse / Lokbremse (Independent Brake) | `Ctrl+Z` | `Ctrl+Shift+Z` |
+
+(`T` ist in TSW6 schon belegt – Überblick der Streckenziele. Beim Zuweisen in TSW6
+erst Ctrl, dann Shift drücken.)
+
 `--layout`, `--dry-run` und `--force` funktionieren wie beim Umwandeln.
 
 ## Tastaturlayout (wichtig!)
@@ -137,6 +156,10 @@ python3 elgato2streamcontroller.py "Profil.streamDeckProfile.zip" --name TSW6 --
 ```
 
 ## Fehlerbehebung
+
+- **Seite ist plötzlich leer (keine Bilder):** Die Bildpfade der Seite zeigen auf einen
+  Ordner unter `imported/`, den es nicht mehr gibt. StreamController beenden und
+  `python3 elgato2streamcontroller.py --check --repair` ausführen.
 
 - **Tasten tun im Spiel nichts:** StreamController braucht Zugriff auf `/dev/uinput`
   (siehe Voraussetzungen). Im Aktions-Editor einer Taste steht sonst
